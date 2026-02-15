@@ -14,7 +14,7 @@ const CONFIG = {
   GOOGLE_SCOPES: 'https://www.googleapis.com/auth/spreadsheets',
   SHEET_TAB_NAME: 'Transactions',
   SHEET_HEADERS: ['ID', 'Date', 'Intitule', 'Montant', 'Type', 'Categorie', 'Note', 'Timestamp'],
-  ENABLE_DEMO_DATA: false,
+  ENABLE_DEMO_DATA: true,
 
   CATEGORIES: {
     DÃ©pense: [
@@ -105,7 +105,7 @@ function loadGoogleSheetId() {
 
 // ============ SUPABASE CLOUD SYNC ============
 function cloudConfigured() {
-  return !!(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY && window.supabase && window.supabase.createClient);
+  return !!(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY && typeof window.supabase !== 'undefined' && window.supabase.createClient);
 }
 
 function updateCloudStatus(msg) {
@@ -120,20 +120,23 @@ function updateCloudUiState() {
   const loggedIn = !!(state.cloud.enabled && state.cloud.user);
 
   if (!state.cloud.enabled) {
-    if (accountBtn) accountBtn.disabled = true;
+    if (accountBtn) {
+      accountBtn.disabled = true;
+      accountBtn.textContent = 'Compte (non configuré)';
+    }
     if (cloudSyncBtn) cloudSyncBtn.disabled = true;
-    updateCloudStatus('Cloud: non configure');
-    if (authUserLabel) authUserLabel.textContent = 'Configuration Supabase requise';
+    updateCloudStatus('Cloud: non configuré');
+    if (authUserLabel) authUserLabel.textContent = 'Supabase non configuré';
     return;
   }
 
   if (accountBtn) {
     accountBtn.disabled = false;
-    accountBtn.textContent = loggedIn ? 'Compte connecte' : 'Compte';
+    accountBtn.textContent = loggedIn ? 'Compte connecté' : 'Compte';
   }
   if (cloudSyncBtn) cloudSyncBtn.disabled = !loggedIn;
-  if (authUserLabel) authUserLabel.textContent = loggedIn ? state.cloud.user.email : 'Non connecte';
-  updateCloudStatus(loggedIn ? `Cloud: connecte (${state.cloud.user.email})` : 'Cloud: pret (connexion requise)');
+  if (authUserLabel) authUserLabel.textContent = loggedIn ? state.cloud.user.email : 'Non connecté';
+  updateCloudStatus(loggedIn ? `Cloud: connecté (${state.cloud.user.email})` : 'Cloud: prêt (connexion requise)');
 }
 
 function openAuthModal() {
@@ -273,35 +276,42 @@ async function initCloud() {
     updateCloudUiState();
     return;
   }
-  state.cloud.client = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
-  state.cloud.enabled = true;
+  
+  try {
+    state.cloud.client = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+    state.cloud.enabled = true;
 
-  const { data } = await state.cloud.client.auth.getSession();
-  state.cloud.user = data && data.session ? data.session.user : null;
+    const { data } = await state.cloud.client.auth.getSession();
+    state.cloud.user = data && data.session ? data.session.user : null;
 
-  state.cloud.client.auth.onAuthStateChange((_event, session) => {
-    state.cloud.user = session ? session.user : null;
+    state.cloud.client.auth.onAuthStateChange((_event, session) => {
+      state.cloud.user = session ? session.user : null;
+      updateCloudUiState();
+    });
+
+    $('accountBtn')?.addEventListener('click', openAuthModal);
+    $('cloudSyncBtn')?.addEventListener('click', cloudSyncAll);
+    $('authModalClose')?.addEventListener('click', closeAuthModal);
+    $('authSignupBtn')?.addEventListener('click', authSignup);
+    $('authLoginBtn')?.addEventListener('click', authLogin);
+    $('authLogoutBtn')?.addEventListener('click', authLogout);
+    $('authEmail')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); authLogin(); }
+    });
+    $('authPassword')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); authLogin(); }
+    });
+    $('authModalBackdrop')?.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'authModalBackdrop') closeAuthModal();
+    });
     updateCloudUiState();
-  });
 
-  $('accountBtn').addEventListener('click', openAuthModal);
-  $('cloudSyncBtn').addEventListener('click', cloudSyncAll);
-  $('authModalClose').addEventListener('click', closeAuthModal);
-  $('authSignupBtn').addEventListener('click', authSignup);
-  $('authLoginBtn').addEventListener('click', authLogin);
-  $('authLogoutBtn').addEventListener('click', authLogout);
-  $('authEmail').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); authLogin(); }
-  });
-  $('authPassword').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); authLogin(); }
-  });
-  $('authModalBackdrop').addEventListener('click', (e) => {
-    if (e.target && e.target.id === 'authModalBackdrop') closeAuthModal();
-  });
-  updateCloudUiState();
-
-  if (state.cloud.user) await cloudSyncAll();
+    if (state.cloud.user) await cloudSyncAll();
+  } catch (error) {
+    console.warn('Erreur d\'initialisation Supabase:', error);
+    state.cloud.enabled = false;
+    updateCloudUiState();
+  }
 }
 
 // ============ GOOGLE SHEETS API ============
@@ -571,29 +581,46 @@ function disconnectGoogleSheet() {
 }
 
 function initGoogle() {
+  // Vérifier si Google Identity Services est disponible
+  if (!window.google || !google.accounts || !google.accounts.oauth2) {
+    console.warn('Google Identity Services non disponible');
+    // Désactiver les éléments d'interface liés à Google
+    const googleElements = [
+      'googleConnectBtn', 'googleSyncBtn', 'googleDisconnectBtn',
+      'googleStatus', 'googleModalBackdrop'
+    ];
+    googleElements.forEach(id => {
+      const element = $(id);
+      if (element) {
+        element.style.display = 'none';
+      }
+    });
+    return;
+  }
+
   const savedId = loadGoogleSheetId();
   if (savedId) {
     state.google.sheetId = savedId;
     state.google.connected = true;
   }
-  $('googleConnectBtn').addEventListener('click', openGoogleModal);
-  $('googleModalConfirm').addEventListener('click', () => connectGoogleSheet(($('googleSheetUrlModal') || {}).value || ''));
-  $('googleModalCancel').addEventListener('click', closeGoogleModal);
-  $('googleModalClose').addEventListener('click', closeGoogleModal);
-  $('googleSheetUrlModal').addEventListener('keydown', (e) => {
+  $('googleConnectBtn')?.addEventListener('click', openGoogleModal);
+  $('googleModalConfirm')?.addEventListener('click', () => connectGoogleSheet(($('googleSheetUrlModal') || {}).value || ''));
+  $('googleModalCancel')?.addEventListener('click', closeGoogleModal);
+  $('googleModalClose')?.addEventListener('click', closeGoogleModal);
+  $('googleSheetUrlModal')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       connectGoogleSheet(($('googleSheetUrlModal') || {}).value || '');
     }
   });
-  $('googleModalBackdrop').addEventListener('click', (e) => {
+  $('googleModalBackdrop')?.addEventListener('click', (e) => {
     if (e.target && e.target.id === 'googleModalBackdrop') closeGoogleModal();
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeGoogleModal();
   });
-  $('googleSyncBtn').addEventListener('click', manualSyncGoogle);
-  $('googleDisconnectBtn').addEventListener('click', disconnectGoogleSheet);
+  $('googleSyncBtn')?.addEventListener('click', manualSyncGoogle);
+  $('googleDisconnectBtn')?.addEventListener('click', disconnectGoogleSheet);
   updateGoogleUiState();
 }
 
@@ -1263,18 +1290,23 @@ function seedDemoData() {
 }
 
 // ============ BOOT ============
-function init() {
-  loadTransactions();
-  if (CONFIG.ENABLE_DEMO_DATA) seedDemoData();
-  initNavigation();
-  initForm();
-  initHistory();
-  initExport();
-  initGoogle();
-  initCloud();
-  updateMonthLabel();
-  updateTxnBadge();
-  refreshDashboard();
+async function init() {
+  try {
+    loadTransactions();
+    if (CONFIG.ENABLE_DEMO_DATA) seedDemoData();
+    initNavigation();
+    initForm();
+    initHistory();
+    initExport();
+    initGoogle();
+    await initCloud();  // Attendre l'initialisation cloud
+    updateMonthLabel();
+    updateTxnBadge();
+    refreshDashboard();
+  } catch (error) {
+    console.error('Erreur lors de l\'initialisation de l\'application:', error);
+    showToast('error', 'Erreur lors du chargement de l\'application. Veuillez rafraîchir la page.');
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);

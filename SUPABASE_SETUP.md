@@ -7,11 +7,14 @@
   - `Project URL`
   - `anon public key`
 
-Set them in local `config.js` (not committed):
+Set them in `config.public.js` (committed) for production static hosting.
+If you want local override, keep using local `config.js` (ignored by Git):
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 
-Start from `config.example.js` and create `config.js`.
+Start from `config.example.js` and create either:
+- `config.public.js` for deployment
+- `config.js` for local only
 
 ## 2) SQL schema
 Run this SQL in `SQL Editor`:

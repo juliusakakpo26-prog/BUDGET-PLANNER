@@ -831,7 +831,8 @@ function renderRecentTxns(txns) {
         <p>Aucune opÃ©ration ce mois</p>
         <button class="btn-primary" data-view="add" style="margin-top:8px;font-size:0.8rem;padding:8px 16px">Ajouter</button>
       </div>`;
-    container.querySelector('[data-view]')?.addEventListener('click', () => navigateTo('add'));
+    const addBtn = container.querySelector('[data-view]');
+    if (addBtn) addBtn.addEventListener('click', () => navigateTo('add'));
     return;
   }
   container.innerHTML = txns.map(t => `
@@ -1111,7 +1112,7 @@ function refreshAnalytics() {
   const expCats = {};
   txns.filter(t => t.type === 'DÃ©pense').forEach(t => { expCats[t.categorie] = (expCats[t.categorie] || 0) + t.montant; });
   const topExp = Object.entries(expCats).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const maxExp = topExp[0]?.[1] || 1;
+  const maxExp = (topExp[0] && topExp[0][1]) ? topExp[0][1] : 1;
 
   $('topExpenses').innerHTML = topExp.length ? topExp.map(([cat, val], i) => `
     <div class="top-item">
@@ -1127,7 +1128,7 @@ function refreshAnalytics() {
   const incCats = {};
   txns.filter(t => t.type === 'Recette').forEach(t => { incCats[t.categorie] = (incCats[t.categorie] || 0) + t.montant; });
   const topInc = Object.entries(incCats).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const maxInc = topInc[0]?.[1] || 1;
+  const maxInc = (topInc[0] && topInc[0][1]) ? topInc[0][1] : 1;
 
   $('topIncomes').innerHTML = topInc.length ? topInc.map(([cat, val], i) => `
     <div class="top-item">
